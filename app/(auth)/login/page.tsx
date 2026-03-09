@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { login } from "@/lib/auth";
+import { login, getMe } from "@/lib/auth";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -28,22 +28,33 @@ export default function LoginPage() {
     setMessage(null);
     try {
       const res = await login({ email, password });
-      // Giả sử backend trả về token trong res.data.token và user trong res.data.user
-      if (res.data?.token) {
-        localStorage.setItem("authToken", res.data.token);
+      // Lưu token từ response (hỗ trợ nhiều cấu trúc response)
+      const token = res.data?.token || res.data?.data?.token;
+      if (token) {
+        localStorage.setItem("authToken", token);
       }
-      const fullName =
-        res.data?.user?.name ||
-        (typeof window !== "undefined"
-          ? localStorage.getItem("pendingName")
-          : null);
-      if (fullName) {
-        localStorage.setItem("userName", fullName);
-        // Xóa dữ liệu tạm sau khi đã dùng
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("pendingName");
+
+      // Lấy thông tin user từ /users/me (cần token đã lưu)
+      try {
+        const meRes = await getMe();
+        const userData = meRes.data?.data || meRes.data;
+        if (userData?.name) {
+          localStorage.setItem("userName", userData.name);
+        }
+      } catch {
+        // Fallback: dùng tên từ response login hoặc pendingName
+        const fallbackName =
+          res.data?.user?.name ||
+          res.data?.data?.user?.name ||
+          localStorage.getItem("pendingName");
+        if (fallbackName) {
+          localStorage.setItem("userName", fallbackName);
         }
       }
+
+      // Xóa dữ liệu tạm
+      localStorage.removeItem("pendingName");
+
       setMessage("Đăng nhập thành công! Chuyển sang trang tin tức...");
       router.push("/");
     } catch (err) {

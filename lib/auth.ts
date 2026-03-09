@@ -20,3 +20,6 @@ export const verifyOtp = (data: {
 export const logout = () => api.post("/auth/logout");
 
 export const refreshToken = () => api.post("/auth/refresh");
+
+// Lấy thông tin user hiện tại (cần token trong header)
+export const getMe = () => api.get("/users/me");

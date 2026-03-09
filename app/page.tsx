@@ -25,7 +25,7 @@ export default function HomePage() {
 
   useEffect(() => {
     try {
-      const name = typeof window !== "undefined" ? localStorage.getItem("userFullName") : null;
+      const name = typeof window !== "undefined" ? localStorage.getItem("userName") : null;
       setUserFullName(name || null);
     } catch {
       setUserFullName(null);

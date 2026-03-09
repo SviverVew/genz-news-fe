@@ -2,21 +2,31 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getNewsDetail } from "@/lib/news";
+import { getNewsDetail, getComments, postComment } from "@/lib/news";
 import { useParams } from "next/navigation";
 import { News } from "@/types/news";
 import { addViewedNews, saveNews } from "@/lib/news";
+import Comment from "@/components/Comment";
+import { Comment as CommentType } from "@/types/comment";
 
 export default function NewsDetailPage() {
   const { id } = useParams();
   const [news, setNews] = useState<News | null>(null);
+  const [comments, setComments] = useState<CommentType[]>([]);
   const [saving, setSaving] = useState(false);
+  const [commentContent, setCommentContent] = useState("");
+  const [postingComment, setPostingComment] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [sortBy, setSortBy] = useState("interest");
 
   useEffect(() => {
     if (id) {
       const newsId = Number(id);
       getNewsDetail(newsId)
-        .then((res) => setNews(res.data))
+        .then((res) => {
+          const newsData = res.data?.data || res.data;
+          setNews(newsData);
+        })
         .catch((err) => {
           console.error("Load detail error", err);
           setNews(null);
@@ -24,8 +34,70 @@ export default function NewsDetailPage() {
       addViewedNews(newsId).catch((err) =>
         console.error("Track view failed", err)
       );
+      loadComments(newsId);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const buildCommentTree = (comments: CommentType[]): CommentType[] => {
+    const commentMap = new Map<number, CommentType>();
+    const rootComments: CommentType[] = [];
+
+    // First pass: create map of all comments
+    comments.forEach((comment) => {
+      commentMap.set(comment.commentId, { ...comment, replies: [] });
+    });
+
+    // Second pass: build tree structure
+    comments.forEach((comment) => {
+      const commentWithReplies = commentMap.get(comment.commentId)!;
+      if (comment.parentCommentId) {
+        const parent = commentMap.get(comment.parentCommentId);
+        if (parent) {
+          if (!parent.replies) parent.replies = [];
+          parent.replies.push(commentWithReplies);
+        }
+      } else {
+        rootComments.push(commentWithReplies);
+      }
+    });
+
+    return rootComments;
+  };
+
+  const loadComments = async (newsId: number) => {
+    setLoadingComments(true);
+    try {
+      const res = await getComments(newsId, sortBy, 1, 10);
+      const commentsData = res.data?.data || res.data || [];
+      // Build nested structure if comments are flat
+      const nestedComments = Array.isArray(commentsData)
+        ? buildCommentTree(commentsData)
+        : commentsData;
+      setComments(nestedComments);
+    } catch (err) {
+      console.error("Load comments error", err);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const handlePostComment = async () => {
+    if (!commentContent.trim() || !id) return;
+    setPostingComment(true);
+    try {
+      await postComment({
+        content: commentContent,
+        newsId: Number(id),
+      });
+      setCommentContent("");
+      if (id) loadComments(Number(id));
+    } catch (err) {
+      console.error("Post comment failed", err);
+    } finally {
+      setPostingComment(false);
+    }
+  };
 
   if (!news)
     return (
@@ -131,11 +203,11 @@ export default function NewsDetailPage() {
           </div>
         )}
 
-        <article className="prose prose-slate mt-6 max-w-none rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm">
+        <article className="prose prose-slate mt-6 max-w-none rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm text-black">
           {news.content ? (
             <div dangerouslySetInnerHTML={{ __html: news.content }} />
           ) : (
-            <p className="text-slate-700">{news.description}</p>
+            <p className="text-slate-700">{news.content}</p>
           )}
         </article>
 
@@ -144,6 +216,82 @@ export default function NewsDetailPage() {
           chịu trách nhiệm trước pháp luật. Hãy báo cáo ngay nếu phát hiện sai
           lệch.
         </div>
+
+        {/* Comments Section */}
+        <section className="mt-8 rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm">
+          <div className="mb-6 flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-slate-900">
+              Bình luận ({news?.totalComment || 0})
+            </h2>
+            <select
+              value={sortBy}
+              onChange={(e) => {
+                setSortBy(e.target.value);
+                if (id) loadComments(Number(id));
+              }}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-indigo-400 text-black"
+            >
+              <option value="interest">Quan tâm nhất</option>
+              <option value="newest">Mới nhất</option>
+              <option value="oldest">Cũ nhất</option>
+            </select>
+          </div>
+
+          {/* Post Comment Form */}
+          <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-black" >
+            <textarea
+              value={commentContent}
+              onChange={(e) => setCommentContent(e.target.value)}
+              placeholder="Viết bình luận của bạn..."
+              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 outline-none focus:border-indigo-400"
+              rows={3}
+            />
+            <div className="mt-3 flex justify-end">
+              <button
+                onClick={handlePostComment}
+                disabled={postingComment || !commentContent.trim()}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {postingComment ? "Đang gửi..." : "Gửi bình luận"}
+              </button>
+            </div>
+          </div>
+
+          {/* Comments List */}
+          {loadingComments ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-24 animate-pulse rounded-xl bg-slate-100"
+                />
+              ))}
+            </div>
+          ) : comments.length === 0 ? (
+            <p className="text-center text-slate-500">
+              Chưa có bình luận nào. Hãy là người đầu tiên!
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {comments.map((comment) => (
+                <Comment
+                  key={comment.commentId}
+                  comment={comment}
+                  newsId={Number(id)}
+                  onDelete={(commentId) => {
+                    setComments((prev) =>
+                      prev.filter((c) => c.commentId !== commentId)
+                    );
+                  }}
+                  onReply={() => {
+                    // Reload comments after reply
+                    if (id) loadComments(Number(id));
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </section>
       </section>
     </main>
   );

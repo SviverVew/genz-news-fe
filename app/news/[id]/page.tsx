@@ -2,15 +2,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getNewsDetail, getComments, postComment } from "@/lib/news";
-import { useParams } from "next/navigation";
+import { getNewsDetail, getComments, postComment, saveNews, addViewedNews, deleteNews } from "@/lib/news";
+import { useParams, useRouter } from "next/navigation";
 import { News } from "@/types/news";
-import { addViewedNews, saveNews } from "@/lib/news";
 import Comment from "@/components/Comment";
 import { Comment as CommentType } from "@/types/comment";
 
 export default function NewsDetailPage() {
   const { id } = useParams();
+  const router = useRouter();
   const [news, setNews] = useState<News | null>(null);
   const [comments, setComments] = useState<CommentType[]>([]);
   const [saving, setSaving] = useState(false);
@@ -18,6 +18,12 @@ export default function NewsDetailPage() {
   const [postingComment, setPostingComment] = useState(false);
   const [loadingComments, setLoadingComments] = useState(false);
   const [sortBy, setSortBy] = useState("interest");
+
+  const currentUserName =
+    typeof window !== "undefined" ? localStorage.getItem("userName") : null;
+  const isPostOwner = news?.author && currentUserName
+    ? news.author === currentUserName
+    : false;
 
   useEffect(() => {
     if (id) {
@@ -32,7 +38,8 @@ export default function NewsDetailPage() {
           setNews(null);
         });
       addViewedNews(newsId).catch((err) =>
-        console.error("Track view failed", err)
+        // Không cần log (thường 401 khi user chưa đăng nhập/ chưa xác minh)
+        console.debug("Track view failed", err)
       );
       loadComments(newsId);
     }
@@ -86,9 +93,8 @@ export default function NewsDetailPage() {
     if (!commentContent.trim() || !id) return;
     setPostingComment(true);
     try {
-      await postComment({
+      await postComment(Number(id), {
         content: commentContent,
-        newsId: Number(id),
       });
       setCommentContent("");
       if (id) loadComments(Number(id));
@@ -185,6 +191,31 @@ export default function NewsDetailPage() {
             >
               {saving ? "Đang lưu..." : "Lưu bài viết"}
             </button>
+            {isPostOwner && (
+              <>
+                <button
+                  onClick={() => router.push(`/news/${id}/edit`)}
+                  className="rounded-full border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700 hover:border-blue-300"
+                >
+                  Chỉnh sửa
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!id || !confirm("Bạn có muốn xóa bài viết này?")) return;
+                    try {
+                      await deleteNews(Number(id));
+                      router.push("/");
+                    } catch (err) {
+                      console.error("Delete news failed", err);
+                      alert("Xóa bài viết thất bại. Vui lòng thử lại.");
+                    }
+                  }}
+                  className="rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 hover:border-rose-300"
+                >
+                  Xóa bài viết
+                </button>
+              </>
+            )}
             <button className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700">
               Báo cáo sai sự thật
             </button>

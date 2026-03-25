@@ -6,12 +6,14 @@ import { useRouter } from "next/navigation";
 import { searchNews } from "@/lib/news";
 import { getMe } from "@/lib/auth";
 import { News } from "@/types/news";
+import { toAssetUrl } from "@/lib/media";
 
 export default function Header() {
   const [user, setUser] = useState<{ name: string; email?: string } | null>(
     null
   );
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [categoryOpen, setCategoryOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<News[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -19,22 +21,29 @@ export default function Header() {
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+  const categoryRef = useRef<HTMLDivElement>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
 
-  // Load user info on mount
-  useEffect(() => {
-    const token =
-      typeof window !== "undefined"
-        ? localStorage.getItem("authToken")
-        : null;
+  const categories = [
+    { key: "all", label: "Tất cả chủ đề" },
+    { key: "Công nghệ", label: "Công nghệ" },
+    { key: "Kinh tế", label: "Kinh tế" },
+    { key: "Thể thao", label: "Thể thao" },
+    { key: "Giáo dục", label: "Giáo dục" },
+    { key: "Chính trị - Xã hội", label: "Chính trị - Xã hội" },
+    { key: "Môi trường", label: "Môi trường" },
+  ];
+
+  const loadUser = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const token = localStorage.getItem("authToken");
 
     if (!token) {
       setUser(null);
       return;
     }
 
-    // Try to get user from /users/me
     getMe()
       .then((res) => {
         const userData = res.data?.data || res.data;
@@ -44,13 +53,30 @@ export default function Header() {
         }
       })
       .catch(() => {
-        // Fallback to localStorage
         const name = localStorage.getItem("userName");
         if (name) {
           setUser({ name });
+        } else {
+          setUser(null);
         }
       });
   }, []);
+
+  // Load user on mount + khi có sự kiện auth-changed
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    loadUser();
+
+    const handler = () => {
+      loadUser();
+    };
+
+    window.addEventListener("auth-changed", handler);
+    return () => {
+      window.removeEventListener("auth-changed", handler);
+    };
+  }, [loadUser]);
 
   // Close dropdown/search on click outside
   useEffect(() => {
@@ -66,6 +92,12 @@ export default function Header() {
         !searchRef.current.contains(e.target as Node)
       ) {
         setSearchOpen(false);
+      }
+      if (
+        categoryRef.current &&
+        !categoryRef.current.contains(e.target as Node)
+      ) {
+        setCategoryOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -108,6 +140,9 @@ export default function Header() {
     localStorage.removeItem("userName");
     setUser(null);
     setDropdownOpen(false);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("auth-changed"));
+    }
     router.push("/");
     router.refresh();
   };
@@ -125,11 +160,20 @@ export default function Header() {
           </span>
         </Link>
 
-        {/* Search */}
-        <div ref={searchRef} className="relative mx-4 flex-1 max-w-md">
-          <div className="relative">
+        {/* Categories dropdown */}
+        <div
+          ref={categoryRef}
+          className="relative hidden sm:block ml-4"
+        >
+          <button
+            onClick={() => setCategoryOpen((open) => !open)}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50"
+          >
+            <span>Chủ đề</span>
             <svg
-              className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+              className={`h-4 w-4 text-slate-400 transition ${
+                categoryOpen ? "rotate-180" : ""
+              }`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -138,73 +182,126 @@ export default function Header() {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                d="M19 9l-7 7-7-7"
               />
             </svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => handleSearch(e.target.value)}
-              onFocus={() => {
-                if (searchResults.length > 0) setSearchOpen(true);
-              }}
-              placeholder="Tìm kiếm tin tức..."
-              className="w-full rounded-full border border-slate-200 bg-slate-50 py-2 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100"
-            />
-            {searching && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
-              </div>
-            )}
-          </div>
+          </button>
 
-          {/* Search Results Dropdown */}
-          {searchOpen && (
-            <div className="absolute left-0 right-0 top-full mt-2 max-h-80 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
-              {searchResults.length === 0 ? (
-                <div className="px-4 py-6 text-center text-sm text-slate-500">
-                  Không tìm thấy kết quả nào
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {searchResults.map((item) => (
-                    <Link
-                      key={item.newsId}
-                      href={`/news/${item.newsId}`}
-                      onClick={() => {
-                        setSearchOpen(false);
-                        setSearchQuery("");
-                      }}
-                      className="flex items-start gap-3 px-4 py-3 transition hover:bg-slate-50"
-                    >
-                      {item.thumbnail && (
-                        <img
-                          src={item.thumbnail}
-                          alt={item.title}
-                          className="h-14 w-14 flex-shrink-0 rounded-lg object-cover"
-                        />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-slate-900 line-clamp-2">
-                          {item.title}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500 line-clamp-1">
-                          {item.author}{" "}
-                          {item.category && `• ${item.category}`}
-                        </p>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
+          {categoryOpen && (
+            <div className="absolute left-0 top-full mt-2 w-52 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+              <div className="py-1">
+                {categories.map((cate) => (
+                  <button
+                    key={cate.key}
+                    type="button"
+                    onClick={() => {
+                      setCategoryOpen(false);
+                      const next =
+                        cate.key === "all"
+                          ? "/"
+                          : `/?category=${encodeURIComponent(cate.key)}`;
+                      router.push(next);
+                      router.refresh();
+                    }}
+                    className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <span>{cate.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
 
-        {/* User Area */}
-        <div className="flex items-center gap-3">
+        {/* Search */}
+        <div className="flex flex-1 items-center gap-3 justify-end">
+          <div ref={searchRef} className="relative flex-1 max-w-md">
+            <div className="relative">
+              <svg
+                className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                onFocus={() => {
+                  if (searchResults.length > 0) setSearchOpen(true);
+                }}
+                placeholder="Tìm kiếm tin tức..."
+                className="w-full rounded-full border border-slate-200 bg-slate-50 py-2 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+              />
+              {searching && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+                </div>
+              )}
+            </div>
+
+            {/* Search Results Dropdown */}
+            {searchOpen && (
+              <div className="absolute left-0 right-0 top-full mt-2 max-h-80 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
+                {searchResults.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-sm text-slate-500">
+                    Không tìm thấy kết quả nào
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {searchResults.map((item) => (
+                      <Link
+                        key={item.newsId}
+                        href={`/news/${item.newsId}`}
+                        onClick={() => {
+                          setSearchOpen(false);
+                          setSearchQuery("");
+                        }}
+                        className="flex items-start gap-3 px-4 py-3 transition hover:bg-slate-50"
+                      >
+                        {item.thumbnail && (
+                          <img
+                            src={toAssetUrl(item.thumbnail)}
+                            alt={item.title}
+                            className="h-14 w-14 flex-shrink-0 rounded-lg object-cover"
+                          />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-slate-900 line-clamp-2">
+                            {item.title}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500 line-clamp-1">
+                            {item.author}{" "}
+                            {item.category && `• ${item.category}`}
+                          </p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* User Area + primary create button */}
           {user ? (
-            <div ref={dropdownRef} className="relative">
+            <>
+              <Link
+                href="/news/create"
+                className="hidden sm:inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-300/50 transition hover:-translate-y-0.5 hover:bg-indigo-700"
+              >
+                <span className="text-lg leading-none">＋</span>
+                <span>Đăng bài viết</span>
+              </Link>
+
+              <div ref={dropdownRef} className="relative">
               <button
                 onClick={() => setDropdownOpen(!dropdownOpen)}
                 className="flex items-center gap-2 rounded-full border border-slate-200 py-1.5 pl-1.5 pr-3 text-sm font-semibold text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50"
@@ -243,7 +340,7 @@ export default function Header() {
                     <Link
                       href="/profile"
                       onClick={() => setDropdownOpen(false)}
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50"
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm !text-slate-700 transition hover:bg-slate-50"
                     >
                       <svg
                         className="h-4 w-4 text-slate-400"
@@ -263,7 +360,7 @@ export default function Header() {
                     <Link
                       href="/profile/edit"
                       onClick={() => setDropdownOpen(false)}
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50"
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm !text-slate-700 transition hover:bg-slate-50"
                     >
                       <svg
                         className="h-4 w-4 text-slate-400"
@@ -283,7 +380,7 @@ export default function Header() {
                     <Link
                       href="/news/create"
                       onClick={() => setDropdownOpen(false)}
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50"
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm !text-slate-700 transition hover:bg-slate-50"
                     >
                       <svg
                         className="h-4 w-4 text-slate-400"
@@ -324,7 +421,8 @@ export default function Header() {
                   </div>
                 </div>
               )}
-            </div>
+              </div>
+            </>
           ) : (
             <>
               <Link

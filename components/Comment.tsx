@@ -28,10 +28,9 @@ export default function Comment({
     if (!replyContent.trim()) return;
     setLoading(true);
     try {
-      await postComment({
+      await postComment(newsId, {
         content: replyContent,
         parentCommentId: comment.commentId,
-        newsId,
       });
       onReply(comment.commentId, replyContent);
       setReplyContent("");
@@ -47,7 +46,11 @@ export default function Comment({
     if (!confirm("Bạn có chắc muốn xóa bình luận này?")) return;
     setDeleting(true);
     try {
-      await deleteComment(comment.commentId);
+      // Truyền body với thông tin comment để backend xử lý
+      await deleteComment(comment.commentId, {
+        content: comment.content,
+        parentCommentId: comment.parentCommentId,
+      });
       onDelete(comment.commentId);
     } catch (err) {
       console.error("Delete failed", err);
@@ -119,7 +122,7 @@ export default function Comment({
               value={replyContent}
               onChange={(e) => setReplyContent(e.target.value)}
               placeholder="Viết bình luận..."
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+              className="w-full rounded-lg border !text-slate-800 border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400"
               rows={2}
             />
             <div className="flex gap-2">

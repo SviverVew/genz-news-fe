@@ -1,74 +1,155 @@
 // src/app/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { getNewsByCategory } from "@/lib/news";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { getLatestNews, getNewsByCategory } from "@/lib/news";
 import NewsCard from "@/components/NewsCard";
 import { News } from "@/types/news";
-
-const categories = [
-  { key: "công nghệ", label: "Công nghệ" },
-  { key: "Kinh tế", label: "Kinh tế" },
-  { key: "Giải trí", label: "Thể thao" },
-  { key: "Giáo dục", label: "Giáo dục" },
-  { key: "Chính trị - Xã hội", label: "Chính trị - Xã hội" },
-  { key: "Môi trường", label: "Môi trường" },
-];
+import { toAssetUrl } from "@/lib/media";
+import { useSearchParams } from "next/navigation";
 
 export default function HomePage() {
+  const searchParams = useSearchParams();
+  const categoryParam = searchParams.get("category");
+  const selectedCategory =
+    categoryParam && categoryParam !== "all" ? categoryParam : null;
+
   const [news, setNews] = useState<News[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState("công nghệ");
-  const [page, setPage] = useState(1);
-  const [userFullName, setUserFullName] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Infinite scroll state (latest feed)
+  const [latestHasMore, setLatestHasMore] = useState(true);
+  const [latestNextCursor, setLatestNextCursor] = useState<string | null>(null);
+
+  // Category paging state
+  const [categoryPage, setCategoryPage] = useState(1);
+  const [categoryHasMore, setCategoryHasMore] = useState(true);
+
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  const LATEST_PAGE_SIZE = 7;
+  const CATEGORY_PAGE_SIZE = 1; // follow your requested endpoint shape
+
+  const fetchLatest = useCallback(async (cursor: string | null, append: boolean) => {
+    setLoading(true);
+    setError(null);
     try {
-      const name = typeof window !== "undefined" ? localStorage.getItem("userName") : null;
-      setUserFullName(name || null);
+      const res = await getLatestNews(cursor ?? undefined, LATEST_PAGE_SIZE);
+      const raw = res?.data;
+      const container = raw?.data ?? raw;
+      const list =
+        container?.data ?? container?.items ?? container?.news ?? container ?? [];
+      const cursorFromResponse =
+        container?.nextCursor ?? raw?.nextCursor ?? null;
+
+      const items = Array.isArray(list) ? list : [];
+      const lastItemId = items.length
+        ? (items[items.length - 1] as News).newsId
+        : null;
+      setNews((prev) => (append ? [...prev, ...items] : items));
+      // Prefer backend-provided cursor; fallback to last item's id for
+      // backends that use "cursor = lastId".
+      if (cursorFromResponse !== null && cursorFromResponse !== undefined) {
+        setLatestNextCursor(String(cursorFromResponse));
+        setLatestHasMore(true);
+      } else if (lastItemId !== null && items.length === LATEST_PAGE_SIZE) {
+        setLatestNextCursor(String(lastItemId));
+        setLatestHasMore(true);
+      } else {
+        setLatestNextCursor(null);
+        setLatestHasMore(false);
+      }
     } catch {
-      setUserFullName(null);
+      setError("Không thể tải tin. Vui lòng thử lại.");
+      if (!append) setNews([]);
+      setLatestHasMore(false);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-  let cancelled = false;
-
-  const fetchNews = async () => {
-    setLoading(true);
-
-    try {
-      const res = await getNewsByCategory(selectedCategory, page, 9);
-      const list =
-        res?.data?.data?.data ||
-        res?.data?.data ||
-        res?.data?.items ||
-        res?.data ||
-        [];
-
-      if (!cancelled) {
-        setNews(Array.isArray(list) ? list : []);
-        setError(null);
-      }
-    } catch {
-      if (!cancelled) {
-        setError("Không thể tải tin. Vui lòng thử lại.");
+  const fetchByCategory = useCallback(
+    async (page: number) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await getNewsByCategory(
+          selectedCategory || "",
+          page,
+          CATEGORY_PAGE_SIZE
+        );
+        const raw = res?.data;
+        const container = raw?.data ?? raw;
+        const list =
+          container?.data ?? container?.items ?? container?.news ?? container ?? [];
+        const items = Array.isArray(list) ? list : [];
+        setNews(items);
+        setCategoryHasMore(items.length === CATEGORY_PAGE_SIZE);
+      } catch {
+        setError("Không thể tải tin theo chủ đề. Vui lòng thử lại.");
         setNews([]);
-      }
-    } finally {
-      if (!cancelled) {
+        setCategoryHasMore(false);
+      } finally {
         setLoading(false);
       }
+    },
+    [selectedCategory]
+  );
+
+  // Load initial feed (latest vs category)
+  useEffect(() => {
+    if (selectedCategory) {
+      setCategoryPage(1);
+      fetchByCategory(1);
+      setLatestHasMore(false);
+      setLatestNextCursor(null);
+    } else {
+      setCategoryPage(1);
+      setCategoryHasMore(true);
+      fetchLatest(null, false);
     }
-  };
+  }, [selectedCategory, fetchByCategory, fetchLatest]);
 
-  fetchNews();
+  // Infinite scroll trigger
+  useEffect(() => {
+    // Category mode uses normal pagination, not infinite scroll.
+    if (selectedCategory) return;
+    const target = loadMoreRef.current;
+    if (!target) return;
 
-  return () => {
-    cancelled = true;
-  };
-}, [selectedCategory, page]);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (
+          first.isIntersecting &&
+          !loading &&
+          latestHasMore &&
+          latestNextCursor
+        ) {
+          fetchLatest(latestNextCursor, true);
+        }
+      },
+      {
+        root: null,
+        rootMargin: "200px",
+        threshold: 0.1,
+      }
+    );
+
+    observer.observe(target);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [
+    selectedCategory,
+    latestHasMore,
+    latestNextCursor,
+    loading,
+    news.length,
+    fetchLatest,
+  ]);
 
 
   return (
@@ -91,31 +172,6 @@ export default function HomePage() {
                 “đúng sự thật, chịu trách nhiệm trước pháp luật”. Chúng tôi giúp
                 bạn lan tỏa thông tin nhanh, rõ và đáng tin.
               </p>
-              <div className="flex flex-wrap gap-3">
-                {userFullName ? (
-                  <div className="inline-flex items-center gap-3 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-white">
-                      {userFullName.charAt(0).toUpperCase()}
-                    </span>
-                    <span>Xin chào, {userFullName}</span>
-                  </div>
-                ) : (
-                  <>
-                    <a
-                      href="/register"
-                      className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-300/50 transition hover:-translate-y-0.5 hover:bg-indigo-700"
-                    >
-                      Đăng ký thành nhà báo GenZ
-                    </a>
-                    <a
-                      href="/login"
-                      className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold !text-slate-400 transition hover:border-indigo-300 hover:text-indigo-700"
-                    >
-                      Đăng nhập & đăng bài
-                    </a>
-                  </>
-                )}
-              </div>
             </div>
             <div className="w-full max-w-md">
               <div className="rounded-3xl border border-indigo-100 bg-white/60 p-4 shadow-xl backdrop-blur">
@@ -141,24 +197,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="mt-10 flex flex-wrap items-center gap-3">
-            {categories.map((cate) => (
-              <button
-                key={cate.key}
-                onClick={() => {
-                  setSelectedCategory(cate.key);
-                  setPage(1);
-                }}
-                className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                  selectedCategory === cate.key
-                    ? "border-indigo-200 bg-indigo-600 text-white shadow-md"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:text-indigo-700"
-                }`}
-              >
-                {cate.label}
-              </button>
-            ))}
-          </div>
+          {/* Categories đã được chuyển lên Header */}
         </div>
       </section>
 
@@ -189,7 +228,7 @@ export default function HomePage() {
 
         <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <div className="space-y-6">
-            {loading ? (
+            {loading && news.length === 0 ? (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
                 {Array.from({ length: 4 }).map((_, idx) => (
                   <div
@@ -200,35 +239,102 @@ export default function HomePage() {
               </div>
             ) : news.length === 0 ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-600">
-                Chưa có bài nào trong chủ đề này. Hãy là người đầu tiên đăng tin
-                trung thực!
+                Chưa có bài nào. Hãy là người đầu tiên đăng tin trung thực!
               </div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {news.map((item) => (
-                  <NewsCard key={item.newsId} news={item} />
-                ))}
-              </div>
-            )}
+              <>
+                {/* Featured big post */}
+                <article className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+                  {news[0].thumbnail && (
+                    <div className="relative h-72 w-full overflow-hidden bg-slate-100">
+                      <img
+                        src={toAssetUrl(news[0].thumbnail)}
+                        alt={news[0].title}
+                        className="h-full w-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+                      <div className="absolute bottom-4 left-4 right-4 space-y-2">
+                        <p className="inline-flex rounded-full bg-indigo-600/90 px-3 py-1 text-xs font-semibold text-white">
+                          Tin nổi bật hôm nay
+                        </p>
+                        <h3 className="text-2xl font-bold text-white line-clamp-2">
+                          {news[0].title}
+                        </h3>
+                        <p className="max-w-2xl text-sm text-slate-100 line-clamp-2">
+                          {news[0].description}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {!news[0].thumbnail && (
+                    <div className="h-40 bg-slate-100" />
+                  )}
+                  <div className="p-5">
+                    <NewsCard news={news[0]} />
+                  </div>
+                </article>
 
-            <div className="flex justify-center gap-3">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700 disabled:opacity-50"
-              >
-                Trang trước
-              </button>
-              <span className="flex items-center text-sm font-semibold text-slate-600">
-                Trang {page}
-              </span>
-              <button
-                onClick={() => setPage((p) => p + 1)}
-                className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-700"
-              >
-                Trang sau
-              </button>
-            </div>
+                {/* Remaining posts */}
+                {news.length > 1 && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {news.slice(1).map((item) => (
+                      <NewsCard key={item.newsId} news={item} />
+                    ))}
+                  </div>
+                )}
+
+                {/* Infinite scroll (latest) OR normal pagination (category) */}
+                {!selectedCategory ? (
+                  <div ref={loadMoreRef} className="mt-6 h-8 w-full">
+                    {loading && news.length > 0 && (
+                      <div className="flex justify-center">
+                        <span className="text-sm text-slate-500">
+                          Đang tải thêm...
+                        </span>
+                      </div>
+                    )}
+                    {!latestHasMore && (
+                      <div className="mt-2 flex justify-center">
+                        <span className="text-xs text-slate-400">
+                          Hết bài để hiển thị
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-8 flex items-center justify-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = categoryPage - 1;
+                        if (next < 1) return;
+                        setCategoryPage(next);
+                        fetchByCategory(next);
+                      }}
+                      disabled={categoryPage <= 1 || loading}
+                      className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                    >
+                      Trang trước
+                    </button>
+                    <span className="text-sm text-slate-600">
+                      Trang {categoryPage}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = categoryPage + 1;
+                        setCategoryPage(next);
+                        fetchByCategory(next);
+                      }}
+                      disabled={!categoryHasMore || loading}
+                      className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      Trang sau
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <aside className="space-y-4">

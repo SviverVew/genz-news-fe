@@ -6,7 +6,22 @@ import Link from "next/link";
 import { addViewedNews, saveNews } from "@/lib/news";
 import { News } from "@/types/news";
 
-export default function NewsCard({ news }: { news: News }) {
+type NewsCardProps = {
+  news: News;
+  // Optional owner actions used in profile page
+  isOwner?: boolean;
+  onEdit?: (newsId: number) => void;
+  onDelete?: (newsId: number) => Promise<void> | void;
+  isDeleting?: boolean;
+};
+
+export default function NewsCard({
+  news,
+  isOwner,
+  onEdit,
+  onDelete,
+  isDeleting,
+}: NewsCardProps) {
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -25,9 +40,8 @@ export default function NewsCard({ news }: { news: News }) {
   };
 
   const handleView = () => {
-    addViewedNews(news.newsId).catch((err) =>
-      console.error("Track view failed", err)
-    );
+    // Không cần log lỗi track view (401/404 có thể xảy ra khi user chưa đăng nhập).
+    addViewedNews(news.newsId);
   };
 
   return (
@@ -101,6 +115,38 @@ export default function NewsCard({ news }: { news: News }) {
               </button>
             </div>
           </div>
+
+          {(isOwner || onEdit || onDelete) && (
+            <div className="mt-3 flex items-center justify-end gap-2 px-4 pb-3">
+              {isOwner && onEdit && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onEdit(news.newsId);
+                  }}
+                  className="rounded-full border border-blue-200 px-3 py-1 text-xs font-semibold text-blue-700 hover:border-blue-300 hover:text-blue-800"
+                >
+                  Chỉnh sửa
+                </button>
+              )}
+              {isOwner && onDelete && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onDelete(news.newsId);
+                  }}
+                  disabled={isDeleting}
+                  className="rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700 hover:border-rose-300 hover:text-rose-800 disabled:opacity-50"
+                >
+                  {isDeleting ? "Đang xóa..." : "Xóa"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </Link>

@@ -28,10 +28,19 @@ export default function LoginPage() {
     setMessage(null);
     try {
       const res = await login({ email, password });
-      // Lưu token từ response (hỗ trợ nhiều cấu trúc response)
-      const token = res.data?.token || res.data?.data?.token;
+      // Lưu accessToken / refreshToken vào localStorage
+      const token =
+        res.data?.data?.accessToken ||
+        res.data?.accessToken ||
+        res.data?.token;
+      const refreshToken =
+        res.data?.data?.refreshToken || res.data?.refreshToken;
+
       if (token) {
         localStorage.setItem("authToken", token);
+      }
+      if (refreshToken) {
+        localStorage.setItem("refreshToken", refreshToken);
       }
 
       // Lấy thông tin user từ /users/me (cần token đã lưu)
@@ -54,6 +63,11 @@ export default function LoginPage() {
 
       // Xóa dữ liệu tạm
       localStorage.removeItem("pendingName");
+
+      // Thông báo cho Header biết trạng thái đăng nhập đã thay đổi
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("auth-changed"));
+      }
 
       setMessage("Đăng nhập thành công! Chuyển sang trang tin tức...");
       router.push("/");

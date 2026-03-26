@@ -59,11 +59,15 @@ export default function Comment({
     }
   };
 
-  const isOwnComment =
-    typeof window !== "undefined" &&
-    localStorage.getItem("authToken") &&
-    comment.user.userId ===
-      Number(localStorage.getItem("userId") || "0");
+  // const isOwnComment =
+  //   typeof window !== "undefined" &&
+  //   localStorage.getItem("authToken") &&
+  //   comment.user.userId ===
+  //     Number(localStorage.getItem("userId") || "0");
+const isOwnComment =
+  typeof window !== "undefined" &&
+  !!localStorage.getItem("authToken") &&
+  String(comment.user.userId) === String(localStorage.getItem("userId"));
 
   return (
     <div

@@ -50,8 +50,10 @@ export default function LoginPage() {
         if (userData?.name) {
           localStorage.setItem("userName", userData.name);
         }
+        if (userData?.userId || userData?.id) {
+          localStorage.setItem("userId", String(userData.userId || userData.id));
+        }
       } catch {
-        // Fallback: dùng tên từ response login hoặc pendingName
         const fallbackName =
           res.data?.user?.name ||
           res.data?.data?.user?.name ||
@@ -59,8 +61,14 @@ export default function LoginPage() {
         if (fallbackName) {
           localStorage.setItem("userName", fallbackName);
         }
+        // Nếu login fallback có userId thì cũng lưu
+        const fallbackId =
+          res.data?.user?.userId ||
+          res.data?.data?.user?.userId;
+        if (fallbackId) {
+          localStorage.setItem("userId", String(fallbackId));
+        }
       }
-
       // Xóa dữ liệu tạm
       localStorage.removeItem("pendingName");
 

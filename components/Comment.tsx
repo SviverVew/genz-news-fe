@@ -41,7 +41,6 @@ export default function Comment({
       setLoading(false);
     }
   };
-
   const handleDelete = async () => {
     if (!confirm("Bạn có chắc muốn xóa bình luận này?")) return;
     setDeleting(true);
@@ -59,15 +58,12 @@ export default function Comment({
     }
   };
 
-  // const isOwnComment =
-  //   typeof window !== "undefined" &&
-  //   localStorage.getItem("authToken") &&
-  //   comment.user.userId ===
-  //     Number(localStorage.getItem("userId") || "0");
-const isOwnComment =
-  typeof window !== "undefined" &&
-  !!localStorage.getItem("authToken") &&
-  String(comment.user.userId) === String(localStorage.getItem("userId"));
+  const isOwnComment =
+    typeof window !== "undefined" &&
+    localStorage.getItem("authToken") &&
+    comment.user.userId ===
+      Number(localStorage.getItem("userId") || "0");
+      
 
   return (
     <div

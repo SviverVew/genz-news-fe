@@ -95,16 +95,23 @@ export default function NewsCard({
                   {news.author}
                 </span>
                 <span className="text-xs">
-                  {news.createdAt
-                    ? new Date(news.createdAt).toLocaleDateString()
-                    : "Đã xác minh sự thật"}
+                  {news.created_at
+                    ? new Date(news.created_at).toLocaleDateString('vi-VN')
+                    : news.createdAt
+                      ? new Date(news.createdAt).toLocaleDateString('vi-VN')
+                      : "Đã xác minh sự thật"}
                 </span>
+                {(news.updated_at || news.updatedAt) && (
+                  <span className="text-xs text-slate-400">
+                    Cập nhật: {new Date(news.updated_at ?? news.updatedAt!).toLocaleDateString('vi-VN')}
+                  </span>
+                )}
               </div>
             </div>
 
             <div className="flex items-center gap-3 text-xs">
               <span className="rounded-full bg-slate-100 px-3 py-1">
-                💬 {news.totalComment} phản hồi
+                 {news.totalComment} phản hồi
               </span>
               <button
                 onClick={handleSave}

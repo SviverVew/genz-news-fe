@@ -7,6 +7,11 @@ export interface News {
   totalComment: number;
   // Optional fields returned by detail endpoints
   createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+  viewCount?: number;
+  view_count?: number;
   content?: string;
   category?: string;
   tags?: string[];

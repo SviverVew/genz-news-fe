@@ -37,10 +37,23 @@ export default function NewsDetailPage() {
           console.error("Load detail error", err);
           setNews(null);
         });
-      addViewedNews(newsId).catch((err) =>
-        // Không cần log (thường 401 khi user chưa đăng nhập/ chưa xác minh)
-        console.debug("Track view failed", err)
-      );
+
+      addViewedNews(newsId)
+        .then(() => {
+          setNews((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              viewCount:
+                (Number(prev.viewCount ?? prev.view_count ?? 0) || 0) + 1,
+            } as News;
+          });
+        })
+        .catch((err) =>
+          // Không cần log (thường 401 khi user chưa đăng nhập/ chưa xác minh)
+          console.debug("Track view failed", err)
+        );
+
       loadComments(newsId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -155,9 +168,17 @@ export default function NewsDetailPage() {
               <div>
                 <p className="font-semibold text-slate-900">{news.author}</p>
                 <p className="text-xs text-slate-500">
-                  {news.createdAt
-                    ? new Date(news.createdAt).toLocaleString()
+                  {(news.created_at ?? news.createdAt)
+                    ? new Date(news.created_at ?? news.createdAt!).toLocaleString('vi-VN')
                     : "Thời gian không xác định"}
+                </p>
+                {(news.updated_at ?? news.updatedAt) && (
+                  <p className="text-xs text-slate-400">
+                    Cập nhật: {new Date(news.updated_at ?? news.updatedAt!).toLocaleString('vi-VN')}
+                  </p>
+                )}
+                <p className="text-xs text-slate-400">
+                  👁️ {news.viewCount ?? news.view_count ?? 0} lượt xem
                 </p>
               </div>
             </div>

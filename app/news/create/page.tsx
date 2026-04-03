@@ -201,7 +201,7 @@ export default function CreateNewsPage() {
                       setUploadingThumbnail(false);
                     }
                   }}
-                  className="rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                  className="rounded-lg border border-slate-200 px-2 py-1 text-sm !text-black !file:text-black" 
                 />
 
                 {uploadingThumbnail && (

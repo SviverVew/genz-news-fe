@@ -193,10 +193,10 @@ export default function EditNewsPage() {
                       setUploadingThumbnail(false);
                     }
                   }}
-                  className="rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                  className="rounded-lg border border-slate-200 px-2 py-1 text-sm !text-black !file:text-black"
                 />
                 {uploadingThumbnail && (
-                  <p className="text-sm text-slate-500">Đang upload ảnh...</p>
+                  <p className="text-sm !text-slate-700">Đang upload ảnh...</p>
                 )}
               </div>
             </div>

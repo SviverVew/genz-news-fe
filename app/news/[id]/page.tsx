@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getNewsDetail, getComments, postComment, saveNews, addViewedNews, deleteNews } from "@/lib/news";
 import { useParams, useRouter } from "next/navigation";
 import { News } from "@/types/news";
@@ -166,7 +167,16 @@ export default function NewsDetailPage() {
                 </div>
               )}
               <div>
-                <p className="font-semibold text-slate-900">{news.author}</p>
+                {news.user ? (
+                  <Link
+                    href={`/journalist/${news.user.userId}`}
+                    className="font-semibold text-slate-900 hover:text-indigo-600"
+                  >
+                    {news.user.name}
+                  </Link>
+                ) : (
+                  <p className="font-semibold text-slate-900">{news.author}</p>
+                )}
                 <p className="text-xs text-slate-500">
                   {(news.created_at ?? news.createdAt)
                     ? new Date(news.created_at ?? news.createdAt!).toLocaleString('vi-VN')

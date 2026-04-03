@@ -172,6 +172,19 @@ export const addViewedNews = async (newsId: number) => {
 export const getViewedNews = (page: number = 1, limit: number = 20) =>
   api.get(`/news/viewed?page=${page}&limit=${limit}`);
 
+export const getTrendingJournalists = (limit = 10) =>
+  api.get(`/news/trending/journalists-by-news?limit=${encodeURIComponent(
+    String(limit)
+  )}`);
+
+export const getJournalistRating = (journalistId: number) =>
+  api.get(`/news/rating/journalist/${journalistId}`);
+
+export const postJournalistRating = (journalistId: number, data: {
+  rating: number;
+  comment: string;
+}) => api.post(`/news/rating/journalist/${journalistId}`, data);
+
 // Latest news (timeline) with cursor pagination
 // - First load: GET /news (no cursor)
 // - Next: GET /news?cursor=<nextCursor>&limit=<limit>

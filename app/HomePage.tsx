@@ -2,11 +2,12 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { getLatestNews, getNewsByCategory } from "@/lib/news";
+import { getLatestNews, getNewsByCategory, getTrendingJournalists } from "@/lib/news";
 import NewsCard from "@/components/NewsCard";
 import { News } from "@/types/news";
+import { JournalistSummary } from "@/types/journalist";
 import { toAssetUrl } from "@/lib/media";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 
 export default function HomePage() {
   const searchParams = useSearchParams();
@@ -14,9 +15,15 @@ export default function HomePage() {
   const selectedCategory =
     categoryParam && categoryParam !== "all" ? categoryParam : null;
 
+  const router = useRouter();
+
   const [news, setNews] = useState<News[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [topJournalists, setTopJournalists] = useState<JournalistSummary[]>([]);
+  const [topJournalistsLoading, setTopJournalistsLoading] = useState(true);
+  const [topJournalistsError, setTopJournalistsError] = useState<string | null>(null);
 
   // Infinite scroll state (latest feed)
   const [latestHasMore, setLatestHasMore] = useState(true);
@@ -110,6 +117,30 @@ export default function HomePage() {
       fetchLatest(null, false);
     }
   }, [selectedCategory, fetchByCategory, fetchLatest]);
+
+  // Load top journalists
+  useEffect(() => {
+    const loadTopJournalists = async () => {
+      setTopJournalistsLoading(true);
+      setTopJournalistsError(null);
+      try {
+        const res = await getTrendingJournalists(10);
+        const raw = res?.data;
+        const container = raw?.data ?? raw;
+        const list =
+          container?.data ?? container?.items ?? container?.journalists ?? container ?? [];
+        setTopJournalists(Array.isArray(list) ? list : []);
+      } catch (err) {
+        console.error("Load top journalists failed", err);
+        setTopJournalistsError("Không thể tải top nhà báo.");
+        setTopJournalists([]);
+      } finally {
+        setTopJournalistsLoading(false);
+      }
+    };
+
+    loadTopJournalists();
+  }, []);
 
   // Infinite scroll trigger
   useEffect(() => {
@@ -346,27 +377,36 @@ export default function HomePage() {
                 Top tác giả được cộng đồng tin tưởng.
               </p>
               <div className="mt-4 space-y-3">
-                {["Lan Anh", "Minh Quân", "Khánh Hòa"].map((name, idx) => (
-                  <div
-                    key={name}
-                    className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 font-semibold text-indigo-700">
-                        {idx + 1}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-slate-900">{name}</p>
-                        <p className="text-xs text-slate-500">
-                          100% tin đã xác minh
-                        </p>
-                      </div>
+                {topJournalistsLoading ? (
+                  <p className="text-sm text-slate-500">Đang tải...</p>
+                ) : topJournalistsError ? (
+                  <p className="text-sm text-rose-500">{topJournalistsError}</p>
+                ) : topJournalists.length === 0 ? (
+                  <p className="text-sm text-slate-500">Chưa có dữ liệu.</p>
+                ) : (
+                  topJournalists.map((journalist, idx) => (
+                    <div
+                      key={journalist.userId}
+                      className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2"
+                    >
+                      <button
+                        onClick={() => router.push(`/journalist/${journalist.userId}`)}
+                        className="flex flex-1 items-center gap-3 text-left"
+                      >
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 font-semibold text-indigo-700">
+                          {idx + 1}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-900">{journalist.name}</p>
+                          <p className="text-xs text-slate-500">{journalist.newsCount} tin</p>
+                        </div>
+                      </button>
+                      <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                        {journalist.newsCount}
+                      </span>
                     </div>
-                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                      Verified
-                    </span>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
 

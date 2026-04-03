@@ -1,3 +1,8 @@
+export interface UserShort {
+  userId: number;
+  name: string;
+}
+
 export interface News {
   newsId: number;
   title: string;
@@ -18,4 +23,5 @@ export interface News {
   totalLike?: number;
   totalShare?: number;
   authorAvatar?: string;
+  user?: UserShort;
 }
